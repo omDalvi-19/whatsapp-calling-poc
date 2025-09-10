@@ -7,7 +7,7 @@
   <script src="/socket.io/socket.io.js"></script>
   <style>
     body {
-      font-family: 'Segoe UI', sans-serif;
+      font-family: "Segoe UI", Arial, sans-serif;
       margin: 0;
       background-color: #f5f5f5;
     }
@@ -132,14 +132,57 @@
 <body>
   <h1>WhatsApp WebRTC Bridge</h1>
   <p class="description">
-    This web app is intended to receive incoming WhatsApp API calls.
-    When a call arrives, a modal will appear allowing you to accept or reject it.
+    This web app handles WhatsApp API calls with proper permission flow.
+    First send a permission request, then make a call after permission is granted.
   </p>
 
-  <h2 id="call-status" style="text-align:center; color:#333; font-weight:normal;"></h2>
+  <!-- Outgoing Call Section -->
+  <div class="outgoing-call-section" style="max-width: 500px; margin: 0 auto; background-color: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 30px;">
+    <h2 style="color: #25D366; text-align: center; margin-top: 0;">Make WhatsApp Call</h2>
+    <div style="display: flex; margin-bottom: 10px;">
+      <input type="text" id="phone-number" placeholder="Enter WhatsApp number with country code (e.g., 911234567890)" 
+        style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+    </div>
+    <div style="display: flex; gap: 10px; justify-content: center;">
+      <button id="make-call-btn" 
+        style="background-color: #25D366; color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; flex: 1; font-size: 16px; font-weight: bold;">
+        Make Call
+      </button>
+    </div>
+    <div id="permission-status" style="text-align: center; margin-top: 10px; display: none; font-size: 14px; padding: 8px 10px; border-radius: 4px; font-weight: bold;"></div>
+    <div id="call-status-message" style="text-align: center; margin-top: 15px; font-size: 14px; color: #075E54;"></div>
+    <div style="border: 1px solid #ffcc00; background-color: #fffbeb; padding: 10px; margin-top: 15px; border-radius: 5px;">
+      <h4 style="color: #d97706; margin: 0 0 5px 0; font-size: 14px;">WhatsApp Call Flow</h4>
+      <ol style="font-size: 13px; color: #666; margin: 0; padding-left: 20px; line-height: 1.4;">
+        <li><strong>Smart Call Button:</strong> Click "Make Call" to handle everything automatically</li>
+        <li><strong>Permission Check:</strong> System checks if you already have permission to call this number</li>
+        <li><strong>Auto Permission:</strong> If needed, permission request is sent automatically</li>
+        <li><strong>Direct Call:</strong> Once permission is granted, call connects immediately</li>
+      </ol>
+      <p style="font-size: 13px; color: #666; margin-top: 8px; font-style: italic;">Per the <a href="https://developers.facebook.com/docs/whatsapp/cloud-api/calling/user-call-permissions" target="_blank" style="color: #075E54;">WhatsApp Cloud API documentation</a>, user permission is required for all calls.</p>
+      <p style="font-size: 13px; color: #856404; margin-top: 5px; font-weight: bold;">⚠️ Rate Limit: WhatsApp allows only one permission request every 24 hours for the same phone number.</p>
+    </div>
+  </div>
+    <!-- For testing: add direct test call button -->
+    <div style="text-align: center; margin-top: 30px;">
+      <h3 style="color: #075E54;">Testing Alternatives</h3>
+      <p style="font-size: 14px; color: #666; max-width: 500px; margin: 0 auto 15px;">
+        While waiting for WhatsApp Business API permissions, you can test your integration in these ways:
+      </p>
+      <div style="display: flex; flex-direction: column; max-width: 500px; margin: 0 auto; gap: 15px;">
+        <div style="background-color: #e8f5e9; padding: 15px; border-radius: 8px; text-align: left; border-left: 4px solid #43a047;">
+          <h4 style="margin: 0 0 5px 0; color: #2e7d32;">Option 1: Incoming Call Test</h4>
+          <p style="margin: 0; font-size: 13px;">Call FROM your mobile TO the WhatsApp Business number to test the incoming call flow.</p>
+        </div>
+        <div style="background-color: #fff8e1; padding: 15px; border-radius: 8px; text-align: left; border-left: 4px solid #ffb300;">
+          <h4 style="margin: 0 0 5px 0; color: #ff8f00;">Option 2: Business Manager Setup</h4>
+          <p style="margin: 0; font-size: 13px;">Add your phone number as admin in Meta Business Manager and request API permissions.</p>
+        </div>
+      </div>
+    </div>
 
   <h3 id="active-caller-name" style="text-align:center; color:#555; display:none;"></h3>
-  <div id="call-timer">⏱️ Call duration: <span id="timer">00:00</span></div>
+  <div id="call-timer"> Call duration: <span id="timer">00:00</span></div>
   <div id="call-duration-result"></div>
 
   <button id="terminate-btn"
@@ -147,20 +190,25 @@
         onclick="terminateCall()">
   Terminate Call
   </button>
+  
+  <!-- Ringtone audio element (hidden) -->
+  <audio id="ringtone" loop preload="auto" style="display: none;">
+    <source src="https://cdn.freesound.org/previews/414/414753_7120908-lq.mp3" type="audio/mpeg">
+  </audio>
 
   <div id="overlay"></div>
   <div id="modal" class="ringing">
     <div class="modal-header">
-      <div class="modal-title" id="caller-name">📲 Incoming WhatsApp Call</div>
+      <div class="modal-title" id="caller-name"> Incoming WhatsApp Call</div>
       <div class="modal-subtitle" id="caller-number"></div>
       <div class="modal-subtitle">Tap to answer or decline</div>
     </div>
     <div class="call-buttons">
-      <button class="circle-btn accept" onclick="respond('accept')" title="Accept Call">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="white" viewBox="0 0 24 24">
-            <path d="M6.62 10.79a15.053 15.053 0 006.59 6.59l2.2-2.2a1 1 0 011.05-.24 11.72 11.72 0 003.7.59 1 1 0 011 1v3.45a1 1 0 01-1 1A17 17 0 013 5a1 1 0 011-1h3.45a1 1 0 011 1 11.72 11.72 0 00.59 3.7 1 1 0 01-.24 1.05l-2.18 2.2z"/>
-          </svg>
-        </button>
+<button class="circle-btn accept" onclick="respond('accept')" title="Accept Call">
+    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="white" viewBox="0 0 24 24">
+      <path d="M6.62 10.79a15.053 15.053 0 006.59 6.59l2.2-2.2a1 1 0 011.05-.24 11.72 11.72 0 003.7.59 1 1 0 011 1v3.45a1 1 0 01-1 1A17 17 0 013 5a1 1 0 011-1h3.45a1 1 0 011 1 11.72 11.72 0 00.59 3.7 1 1 0 01-.24 1.05l-2.18 2.2z"/>
+    </svg>
+  </button>
         <button class="circle-btn reject" onclick="respond('reject')" title="Reject Call">
             <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="white" viewBox="0 0 24 24">
               <path d="M14.4267305,12.3239887 C13.8091494,12.1184418 12.9237465,12.0002 11.9967657,12 C11.0703845,11.9998001 10.1850309,12.1179592 9.56735459,12.323626 C9.29781857,12.4133731 9.10254274,12.5124903 8.99818889,12.5994146 L8.99818886,13.4997844 C8.99830883,14.0560874 8.98526108,14.3378275 8.91482312,14.6766528 C8.76529679,15.3959143 8.36503921,15.9530303 7.5979407,15.9971778 C5.57992549,16.3324217 4.23196922,16.5 3.49954722,16.5 C2.04222339,16.5 1,15.1968274 1,14 L1,12.5 C1,8.77610714 6.02664974,5.99871171 11.9971973,6.00000002 C17.9690798,6.00128863 22.993963,8.77688238 22.9935942,12.4728433 C22.9981103,12.6390833 23.0000363,12.8114009 22.9999995,13.0054528 C22.9999727,13.1468201 22.9992073,13.2587316 22.9969405,13.5090552 C22.9947039,13.7560368 22.993963,13.8651358 22.993963,14 C22.993963,15.1895648 21.9503425,16.5 20.4944157,16.5 C19.7626874,16.5 18.4165903,16.332739 16.4017544,15.9981299 C15.3495506,15.9554142 15.0603932,15.1844357 15.0052983,14.044091 C14.9974219,13.8810653 14.9958289,13.7545264 14.9957743,13.5011312 C14.9956956,12.9832104 14.9956891,12.9405386 14.9957547,12.5995238 C14.8913892,12.5126847 14.6961745,12.4136666 14.4267305,12.3239887 Z M6.99818889,13.5 L6.99818889,12.5 C6.99818889,10.7340787 9.20464625,9.99939745 11.9971973,10 C14.7913808,10.0006029 16.9957741,10.7342819 16.9957741,12.5 C16.9956885,12.9366661 16.9956885,12.9366661 16.995774,13.4997844 C16.995822,13.7225055 16.9971357,13.8268559 17.0029681,13.9475751 C17.0051195,13.992103 17.0078746,14.0335402 17.0110607,14.0715206 C18.7614943,14.3571487 19.9381265,14.5 20.4944157,14.5 C20.7329265,14.5 20.993963,14.1722263 20.993963,14 C20.993963,13.8570865 20.9947313,13.7439632 20.9970225,13.4909448 C20.9992358,13.2465315 20.9999742,13.1385601 20.9999995,13.0050735 C21.0000331,12.8280282 20.998305,12.6734088 20.993963,12.5 C20.993963,10.2010869 17.0111151,8.00108196 11.9967657,7.99999998 C6.98400975,7.99891833 3,10.2002196 3,12.5 L3,14 C3,14.1781726 3.2573842,14.5 3.49954722,14.5 C4.05591217,14.5 5.23278898,14.3571098 6.98361703,14.071404 C6.99451507,13.9374564 6.99824508,13.76066 6.99818889,13.5 Z"></path>
@@ -177,9 +225,16 @@
     let localStream = null;
     let activeCallerName = "";
     let incomingCallId = "";
-    const callStatusEl = document.getElementById("call-status");
+    const callStatusEl = document.getElementById("active-caller-name");
+    const ringtone = document.getElementById("ringtone");
+    
+    console.log("WhatsApp WebRTC Bridge client initialized");
+    console.log("Client startup time:", new Date().toISOString());
+    console.log("Browser user agent:", navigator.userAgent);
+    console.log("Initializing variables and socket connection");
 
     function startCallTimer() {
+      console.log("Starting call timer");
       callStartTime = Date.now();
       document.getElementById("call-timer").style.display = "block";
 
@@ -188,12 +243,14 @@
         const seconds = Math.floor(elapsedMs / 1000);
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
-        document.getElementById("timer").textContent =
-          `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        const timeStr = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+        document.getElementById("timer").textContent = timeStr;
+        console.log(`Call in progress - duration: ${timeStr}`);
       }, 1000);
     }
 
     function stopCallTimer() {
+      console.log("Stopping call timer");
       clearInterval(timerInterval);
       timerInterval = null;
 
@@ -202,37 +259,63 @@
       const mins = Math.floor(seconds / 60);
       const secs = seconds % 60;
 
-      const duration = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      const duration = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+      console.log(`Call ended with duration: ${duration}`);
       document.getElementById("call-timer").style.display = "none";
       document.getElementById("call-duration-result").textContent =
-        `📴 Call ended. Duration: ${duration}`;
+        ` Call ended. Duration: ${duration}`;
+    }
+
+    function playRingtone() {
+      console.log("Playing ringtone");
+      ringtone.volume = 0.7;
+      ringtone.play().catch(err => console.log("Could not play ringtone:", err));
+    }
+
+    function stopRingtone() {
+      console.log("Stopping ringtone");
+      ringtone.pause();
+      ringtone.currentTime = 0;
     }
 
     socket.on("call-is-coming", ({ callId, callerName, callerNumber }) => {
       console.log("WhatsApp call detected:", callId);
+      console.log(`Incoming call from: ${callerName} (${callerNumber})`);
+      console.log(`Call received at: ${new Date().toISOString()}`);
+      
       activeCallerName = callerName;
       incomingCallId = callId;
 
-      document.getElementById("caller-name").textContent = "📲 Incoming WhatsApp Call";
-      document.getElementById("caller-number").textContent = `${callerName} (${callerNumber})`;
+      // Only show modal for incoming calls, not for calls we initiated
+      if (!document.getElementById("active-caller-name").textContent.includes("Calling")) {
+        document.getElementById("caller-name").textContent = "Incoming WhatsApp Call";
+        document.getElementById("caller-number").textContent = `${callerName} (${callerNumber})`;
 
-      callStatusEl.textContent = "📲 Incoming WhatsApp Call...";
-      document.getElementById("modal").style.display = "block";
-      document.getElementById("overlay").style.display = "block";
+        callStatusEl.textContent = "📞 Incoming WhatsApp Call...";
+        document.getElementById("modal").style.display = "block";
+        document.getElementById("overlay").style.display = "block";
+        
+        // Play ringtone
+        playRingtone();
+      } else {
+        console.log("Call-is-coming event received but we're already making an outgoing call. Not showing modal.");
+      }
     });
 
     socket.on("start-browser-timer", () => {
-      console.log("Call accepted — starting timer.");
+      console.log("Call accepted — starting timer at:", new Date().toISOString());
       startCallTimer();
     });
 
     socket.on("call-ended", () => {
-      console.log("Call ended by server.");
+      console.log("Call ended by server at:", new Date().toISOString());
       callStatusEl.textContent = "WhatsApp API Call";
       document.getElementById("active-caller-name").style.display = "none";
       stopCallTimer();
+      stopRingtone(); // Stop ringtone if call ends without user interaction
 
       if (pc) {
+        console.log("Closing peer connection");
         pc.close();
         pc = null;
       }
@@ -242,23 +325,58 @@
       document.getElementById("terminate-btn").style.display = "none";
 
       // Remove any dynamic audio elements
-      document.querySelectorAll("audio").forEach(audio => audio.remove());
+      document.querySelectorAll("audio").forEach(audio => {
+        if (audio.id !== "ringtone") {
+          console.log("Removing audio element:", audio.id || "unnamed");
+          audio.remove();
+        }
+      });
     });
 
     socket.on("browser-answer", async (sdp) => {
-      await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp }));
+      console.log("Received SDP answer from server");
+      console.log("SDP answer first 100 chars:", sdp.substring(0, 100) + "...");
+      
+      try {
+        // Check the signaling state before setting remote description
+        console.log("Current signaling state before setRemoteDescription:", pc.signalingState);
+        
+        if (pc.signalingState === "stable") {
+          console.warn("PeerConnection is already in 'stable' state - cannot set remote answer");
+          return;
+        }
+        
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp }));
+        console.log("Remote description set successfully");
+        console.log("New signaling state:", pc.signalingState);
+      } catch (err) {
+        console.error("Error setting remote description:", err);
+        console.error("Signaling state when error occurred:", pc.signalingState);
+      }
     });
 
     socket.on("browser-candidate", async (candidate) => {
-      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      console.log("Received ICE candidate from server:", candidate.candidate.substring(0, 30) + "...");
+      
+      try {
+        if (pc && pc.remoteDescription) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          console.log("ICE candidate added successfully");
+        } else {
+          console.warn("Cannot add ICE candidate - pc or remoteDescription not ready");
+        }
+      } catch (err) {
+        console.error("Error adding ICE candidate:", err);
+      }
     });
 
 
     function terminateCall() {
-      console.log("Call manually terminated.");
+      console.log("Call manually terminated at:", new Date().toISOString());
 
       // Notify backend if needed
       socket.emit("terminate-call", incomingCallId);
+      console.log("Terminate request sent to server for call ID:", incomingCallId);
 
       // Reset UI
       callStatusEl.textContent = "";
@@ -269,60 +387,519 @@
 
       // Cleanup WebRTC connection
       if (pc) {
+        console.log("Closing peer connection");
         pc.close();
         pc = null;
       }
 
       // Remove any dynamic audio elements
-      document.querySelectorAll("audio").forEach(audio => audio.remove());
+      document.querySelectorAll("audio").forEach(audio => {
+        if (audio.id !== "ringtone") {
+          console.log("Removing audio element:", audio.id || "unnamed");
+          audio.remove();
+        }
+      });
     }
 
     function respond(choice) {
+      console.log(`User ${choice === 'accept' ? 'accepted' : 'rejected'} the call at:`, new Date().toISOString());
       document.getElementById("modal").style.display = "none";
       document.getElementById("overlay").style.display = "none";
+      
+      // Stop ringtone regardless of choice
+      stopRingtone();
 
       if (choice === "accept") {
-        callStatusEl.textContent = "🔴 In Call";
+        console.log("Call accepted - setting up UI and WebRTC");
+        callStatusEl.textContent = "� Connecting Call...";
         document.getElementById("active-caller-name").textContent = `With ${activeCallerName}`;
         document.getElementById("active-caller-name").style.display = "block";
         document.getElementById("call-duration-result").textContent = "";
         document.getElementById("terminate-btn").style.display = "block";
 
+        // Notify the server that we accepted the call before starting WebRTC
+        console.log("Notifying server about call acceptance, ID:", incomingCallId);
+        socket.emit("accept-call", incomingCallId);
+        
+        // Then start WebRTC
         startWebRTC();
       } else {
-        socket.emit("reject-call", incomingCallId);
+        console.log("Call rejected - notifying server");
+        console.log("Rejecting call with ID:", incomingCallId);
+        
+        if (!incomingCallId) {
+          console.error("ERROR: No call ID available to reject!");
+        } else {
+          socket.emit("reject-call", incomingCallId);
+        }
+        
         callStatusEl.textContent = "";
         document.getElementById("active-caller-name").style.display = "none";
       }
     }
 
     async function startWebRTC() {
+      console.log("Starting WebRTC setup at:", new Date().toISOString());
+      
+      // If we already have a peer connection, close it first
+      if (pc) {
+        console.log("Closing existing peer connection before creating a new one");
+        pc.close();
+        pc = null;
+      }
+      
+      console.log("Creating RTCPeerConnection with STUN server");
       pc = new RTCPeerConnection({
         iceServers: [{ urls: "stun:stun.relay.metered.ca:80" }],
       });
 
       // Handle incoming audio from WhatsApp
       pc.ontrack = (e) => {
+        console.log("🔊 Received audio track from WhatsApp:", e.track.id);
+        console.log("Track kind:", e.track.kind);
+        console.log("Track readyState:", e.track.readyState);
+        console.log("Track constraints:", JSON.stringify(e.track.getConstraints()));
+        
         const audio = new Audio();
         audio.srcObject = e.streams[0];
         audio.autoplay = true;
+        audio.volume = 1.0; // Maximum volume
         document.body.appendChild(audio);
+        console.log("Audio element created and added to DOM");
       };
 
       // Send ICE candidates to the backend
       pc.onicecandidate = (event) => {
         if (event.candidate) {
+          console.log("Generated ICE candidate:", event.candidate.candidate.substring(0, 30) + "...");
           socket.emit("browser-candidate", event.candidate);
         }
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+      // Monitor connection state changes
+      pc.onconnectionstatechange = () => {
+        console.log("WebRTC Connection State changed:", pc.connectionState);
+        if (pc.connectionState === 'connected') {
+          console.log("📞 WebRTC connection established successfully at:", new Date().toISOString());
+        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+          console.error("WebRTC connection failed or disconnected:", pc.connectionState);
+        }
+      };
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit("browser-offer", offer.sdp);      
+      // Monitor ICE connection state
+      pc.oniceconnectionstatechange = () => {
+        console.log("ICE Connection State changed:", pc.iceConnectionState);
+        if (pc.iceConnectionState === 'connected') {
+          console.log("🧊 ICE connection established successfully");
+        } else if (pc.iceConnectionState === 'failed') {
+          console.error("ICE connection failed");
+        }
+      };
+
+      try {
+        console.log("Requesting user media (microphone access)");
+        // Request audio with specific constraints for better quality
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 48000,
+            channelCount: 2
+          } 
+        });
+        
+        // Store reference to local stream
+        localStream = stream;
+        
+        console.log("🎤 Local audio tracks acquired:", stream.getAudioTracks().length);
+        stream.getAudioTracks().forEach(track => {
+          console.log("Audio track details - ID:", track.id);
+          console.log("Audio track details - Label:", track.label);
+          console.log("Audio track details - Enabled:", track.enabled);
+          console.log("Audio track details - Muted:", track.muted);
+        });
+        
+        // Add audio track to peer connection
+        stream.getTracks().forEach(track => {
+          console.log("Adding local track to PC:", track.kind, track.id);
+          pc.addTrack(track, stream);
+        });
+
+        console.log("Creating SDP offer");
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          voiceActivityDetection: true
+        });
+        
+        console.log("SDP offer created, type:", offer.type);
+        console.log("SDP offer first 100 chars:", offer.sdp.substring(0, 100) + "...");
+        
+        // Ensure SDP has a=setup:actpass for proper ICE connectivity in outgoing calls
+        let modifiedSdp = offer.sdp;
+        if (!modifiedSdp.includes('a=setup:actpass')) {
+          console.log("Adding a=setup:actpass to SDP for outgoing call");
+          // Add a=setup:actpass after a=fingerprint line if it doesn't exist
+          modifiedSdp = modifiedSdp.replace(
+            /(a=fingerprint:.*)/g, 
+            '$1\r\na=setup:actpass'
+          );
+          console.log("SDP modified to include a=setup:actpass");
+        } else {
+          console.log("SDP already contains a=setup:actpass");
+        }
+        
+        const modifiedOffer = new RTCSessionDescription({
+          type: 'offer',
+          sdp: modifiedSdp
+        });
+        
+        console.log("Setting local description");
+        await pc.setLocalDescription(modifiedOffer);
+        console.log("Local description set successfully");
+        
+        console.log("Sending SDP offer to server");
+        // Also send the call ID to link this offer with the correct call
+        socket.emit("browser-offer", modifiedSdp, incomingCallId);
+        console.log("SDP offer sent to server at:", new Date().toISOString());
+        console.log("Offer SDP contains a=setup:actpass:", modifiedSdp.includes('a=setup:actpass'));
+      } catch (err) {
+        console.error("Error in WebRTC setup:", err);
+        console.error("Error name:", err.name);
+        console.error("Error message:", err.message);
+        alert("Failed to access microphone: " + err.message);
+      }
     }
+
+    // Outgoing call functionality
+    const phoneNumberInput = document.getElementById("phone-number");
+    const makeCallBtn = document.getElementById("make-call-btn");
+    const callStatusMessage = document.getElementById("call-status-message");
+    const permissionStatusEl = document.getElementById("permission-status");
+    
+    let currentPhoneNumber = null;
+    let permissionState = "unknown"; // unknown, pending, granted, denied
+    let pendingCallAfterPermission = false;
+
+    // Make call button - handles both permission request and call initiation
+    makeCallBtn.addEventListener("click", async () => {
+      const phoneNumber = phoneNumberInput.value.trim();
+      console.log(`Make call button clicked for number: ${phoneNumber}`);
+      
+      if (!phoneNumber) {
+        console.log("No phone number entered");
+        alert("Please enter a valid phone number");
+        return;
+      }
+      
+      console.log(`Initiating call to ${phoneNumber} at ${new Date().toISOString()}`);
+      currentPhoneNumber = phoneNumber;
+      
+      // Check if we've recently hit a rate limit for this phone number
+      const rateLimitTimestamp = localStorage.getItem(`permission_rate_limit_${phoneNumber}`);
+      if (rateLimitTimestamp) {
+        console.log(`Found rate limit entry for ${phoneNumber} at ${rateLimitTimestamp}`);
+        const limitTime = new Date(rateLimitTimestamp);
+        const now = new Date();
+        const hoursSinceLimit = (now.getTime() - limitTime.getTime()) / (1000 * 60 * 60);
+        console.log(`Hours since rate limit: ${hoursSinceLimit}`);
+        
+        // If it's been less than 24 hours since hitting the rate limit
+        if (hoursSinceLimit < 24) {
+          const resetTime = new Date(limitTime.getTime() + (24 * 60 * 60 * 1000));
+          const resetTimeStr = resetTime.toLocaleString();
+          const hoursLeft = Math.ceil(24 - hoursSinceLimit);
+          
+          console.log(`Rate limit still active. Hours left: ${hoursLeft}`);
+          console.log(`Rate limit will reset at: ${resetTimeStr}`);
+          
+          permissionStatusEl.style.display = "block";
+          permissionStatusEl.textContent = "⏱️ Rate limit active";
+          permissionStatusEl.style.backgroundColor = "#fff3cd";
+          permissionStatusEl.style.color = "#856404";
+          
+          callStatusMessage.textContent = `You recently hit the rate limit for this number. WhatsApp allows one permission request per 24 hours. You can try again in approximately ${hoursLeft} hours (around ${resetTimeStr}).`;
+          callStatusMessage.style.color = "#dc3545";
+          
+          return;
+        } else {
+          // It's been more than 24 hours, clear the rate limit
+          console.log(`Rate limit expired. Clearing rate limit entry.`);
+          localStorage.removeItem(`permission_rate_limit_${phoneNumber}`);
+        }
+      }
+      
+      // Disable button and show loading state
+      makeCallBtn.disabled = true;
+      makeCallBtn.textContent = "Checking Permission...";
+      makeCallBtn.style.backgroundColor = "#999";
+      callStatusMessage.textContent = "Checking if permission exists...";
+      
+      // Reset any existing permission status display
+      permissionStatusEl.style.display = "none";
+      
+      try {
+        console.log(`Sending smart-call event to server for ${phoneNumber}`);
+        // Send call initiation request to server (it will check permission first)
+        socket.emit("smart-call", { phoneNumber });
+      } catch (error) {
+        console.error("Error sending smart-call event:", error);
+        alert("Failed to make call: " + error.message);
+        makeCallBtn.disabled = false;
+        makeCallBtn.textContent = "Make Call";
+        makeCallBtn.style.backgroundColor = "#25D366";
+        callStatusMessage.textContent = "Error: " + error.message;
+      }
+    });
+
+    // Socket events for smart calling
+    socket.on("permission-needed", ({ phoneNumber }) => {
+      console.log(`Permission needed event received for ${phoneNumber}`);
+      makeCallBtn.textContent = "Sending Permission Request...";
+      callStatusMessage.textContent = "No permission found. Sending permission request automatically...";
+      permissionState = "pending";
+      
+      // Set flag to make call once permission is granted
+      pendingCallAfterPermission = true;
+      console.log("Set pendingCallAfterPermission to true");
+    });
+    
+    socket.on("permission-request-sent", ({ phoneNumber, messageId }) => {
+      console.log(`Permission request sent event received for ${phoneNumber}`);
+      console.log(`Message ID: ${messageId}`);
+      
+      makeCallBtn.disabled = false;
+      makeCallBtn.textContent = "Waiting for Permission...";
+      makeCallBtn.style.backgroundColor = "#ff9800"; // Orange for waiting
+      
+      // Show the permission status display
+      permissionStatusEl.style.display = "block";
+      permissionStatusEl.textContent = "Permission request sent  Waiting for response...";
+      permissionStatusEl.style.backgroundColor = "#f0f4c3";
+      permissionStatusEl.style.color = "#827717";
+      
+      callStatusMessage.textContent = "Permission request sent! Waiting for user to approve on their WhatsApp...";
+      callStatusMessage.style.color = "#28a745";
+    });
+    
+    socket.on("permission-request-failed", (error) => {
+      console.log(`Permission request failed: ${error}`);
+      
+      makeCallBtn.disabled = false;
+      makeCallBtn.textContent = "Make Call";
+      makeCallBtn.style.backgroundColor = "#25D366";
+      
+      permissionStatusEl.style.display = "block";
+      
+      // Check if this is a rate limit error
+      if (error.includes("Rate limit reached") || error.includes("Limit reached for call permission")) {
+        console.log("Rate limit error detected");
+        permissionStatusEl.textContent = "⏱️ Rate limit reached";
+        permissionStatusEl.style.backgroundColor = "#fff3cd";
+        permissionStatusEl.style.color = "#856404";
+        
+        // Store the time when the rate limit was hit
+        const now = new Date();
+        localStorage.setItem(`permission_rate_limit_${currentPhoneNumber}`, now.toISOString());
+        console.log(`Stored rate limit timestamp for ${currentPhoneNumber}: ${now.toISOString()}`);
+        
+        // Calculate the approximate time when they can try again (typically 24 hours)
+        const resetTime = new Date(now.getTime() + (24 * 60 * 60 * 1000));
+        const resetTimeStr = resetTime.toLocaleString();
+        console.log(`Rate limit will reset at: ${resetTimeStr}`);
+        
+        callStatusMessage.textContent = `WhatsApp limits how often you can send permission requests to the same person. You can try again after approximately 24 hours (around ${resetTimeStr}).`;
+        callStatusMessage.style.color = "#dc3545";
+      } else {
+        permissionStatusEl.textContent = "Permission request failed ";
+        permissionStatusEl.style.backgroundColor = "#ffebee";
+        permissionStatusEl.style.color = "#c62828";
+        
+        callStatusMessage.textContent = "Failed to send permission request: " + error;
+        callStatusMessage.style.color = "#dc3545";
+      }
+      
+      permissionState = "unknown";
+      pendingCallAfterPermission = false;
+    });
+    
+    socket.on("call-permission-update", ({ phoneNumber, status, callerName }) => {
+      console.log(`Permission update received: ${phoneNumber}, status: ${status}`);
+      if (callerName) {
+        console.log(`Caller name: ${callerName}`);
+      }
+      
+      // Only process updates for our current phone number
+      if (phoneNumber !== currentPhoneNumber) {
+        console.log(`Ignoring permission update for different number (${phoneNumber} vs ${currentPhoneNumber})`);
+        return;
+      }
+      
+      permissionState = status;
+      console.log(`Updated permission state to: ${permissionState}`);
+      
+      // Save caller name if provided
+      if (callerName) {
+        activeCallerName = callerName;
+        console.log(`Updated active caller name to: ${activeCallerName}`);
+      }
+      
+      if (status === "granted") {
+        console.log("Permission GRANTED");
+        permissionStatusEl.textContent = "Permission GRANTED ✅";
+        permissionStatusEl.style.display = "block";
+        permissionStatusEl.style.backgroundColor = "#e8f5e9";
+        permissionStatusEl.style.color = "#2e7d32";
+        
+        callStatusMessage.textContent = "✅ Call permission granted!";
+        callStatusMessage.style.color = "#28a745";
+        
+        // If we are waiting to make a call after permission is granted
+        if (pendingCallAfterPermission) {
+          console.log("Auto-initiating call after permission granted");
+          callStatusMessage.textContent = "Permission granted! Initiating call automatically...";
+          makeCallBtn.textContent = "Calling...";
+          makeCallBtn.style.backgroundColor = "#075E54";
+          
+          // Auto-initiate the call
+          console.log(`Sending initiate-call event for ${currentPhoneNumber}`);
+          socket.emit("initiate-call", { phoneNumber: currentPhoneNumber });
+          pendingCallAfterPermission = false;
+        } else {
+          // Otherwise just enable the button
+          console.log("Permission granted but no pending call. Enabling button.");
+          makeCallBtn.disabled = false;
+          makeCallBtn.textContent = "Make Call";
+          makeCallBtn.style.backgroundColor = "#25D366";
+        }
+      } else if (status === "denied") {
+        console.log("Permission DENIED");
+        permissionStatusEl.textContent = "Permission DENIED ❌";
+        permissionStatusEl.style.display = "block";
+        permissionStatusEl.style.backgroundColor = "#ffebee";
+        permissionStatusEl.style.color = "#c62828";
+        
+        callStatusMessage.textContent = "❌ Call permission denied by the user.";
+        callStatusMessage.style.color = "#dc3545";
+        
+        makeCallBtn.disabled = false;
+        makeCallBtn.textContent = "Make Call";
+        makeCallBtn.style.backgroundColor = "#25D366";
+        
+        pendingCallAfterPermission = false;
+      } else {
+        console.log(`Other permission status: ${status}`);
+        permissionStatusEl.textContent = "Permission status: " + status;
+        permissionStatusEl.style.display = "block";
+        permissionStatusEl.style.backgroundColor = "#e3f2fd";
+        permissionStatusEl.style.color = "#0d47a1";
+        
+        callStatusMessage.textContent = "Permission status update: " + status;
+        callStatusMessage.style.color = "#075E54";
+        
+        makeCallBtn.disabled = false;
+        makeCallBtn.textContent = "Make Call";
+        makeCallBtn.style.backgroundColor = "#25D366";
+      }
+    });
+
+    socket.on("call-initiated", (data) => {
+      console.log("Call initiated event received:", data);
+      makeCallBtn.textContent = "Calling...";
+      makeCallBtn.style.backgroundColor = "#075E54";
+      callStatusEl.textContent = "📱 Outgoing Call...";
+      document.getElementById("active-caller-name").style.display = "block";
+      
+      // Use the caller name if provided in the event data
+      if (data && data.calleeName) {
+        console.log(`Callee name provided: ${data.calleeName}`);
+        document.getElementById("active-caller-name").textContent = `Calling ${data.calleeName}`;
+      } else if (data && data.callerName) {
+        console.log(`Caller name provided: ${data.callerName}`);
+        document.getElementById("active-caller-name").textContent = `Calling ${data.callerName}`;
+      } else {
+        console.log(`No name provided, using phone number: ${currentPhoneNumber}`);
+        document.getElementById("active-caller-name").textContent = `Calling ${currentPhoneNumber}`;
+      }
+      
+      callStatusMessage.textContent = "Call initiated successfully! Connecting...";
+      
+      // For outgoing calls, connect audio immediately
+      console.log("Starting WebRTC for outgoing call");
+      startWebRTC();
+      
+      // Show terminate button for outgoing calls
+      document.getElementById("terminate-btn").style.display = "block";
+    });
+
+    socket.on("call-status", (message) => {
+      console.log(`Call status update: ${message}`);
+      callStatusMessage.textContent = message;
+      callStatusMessage.style.color = "#ff9800"; // Orange color for status updates
+    });
+
+    socket.on("call-failed", (error) => {
+      console.error("Call failed:", error);
+      
+      makeCallBtn.disabled = false;
+      makeCallBtn.textContent = "Make Call";
+      makeCallBtn.style.backgroundColor = "#25D366";
+      callStatusEl.textContent = "";
+      
+      // Create more detailed error message in the call status area
+      if (error.includes("already on another call") || error.includes("busy")) {
+        console.log("Error type: Already on another call");
+        
+        // Instead of alert, show in the status area
+        callStatusMessage.innerHTML = "❌ <strong>Call Failed:</strong> The recipient is currently on another call. Please try again later.";
+        callStatusMessage.style.color = "#e91e63";
+        
+        // Add a retry button that appears after 30 seconds
+        setTimeout(() => {
+          if (currentPhoneNumber) {
+            const retryButton = document.createElement("button");
+            retryButton.textContent = "Retry Call";
+            retryButton.style.backgroundColor = "#ff9800";
+            retryButton.style.color = "white";
+            retryButton.style.border = "none";
+            retryButton.style.padding = "8px 16px";
+            retryButton.style.borderRadius = "4px";
+            retryButton.style.marginTop = "10px";
+            retryButton.style.cursor = "pointer";
+            
+            retryButton.onclick = () => {
+              callStatusMessage.innerHTML = "Retrying call...";
+              retryButton.remove();
+              
+              // Try the call again
+              makeCallBtn.click();
+            };
+            
+            callStatusMessage.appendChild(document.createElement("br"));
+            callStatusMessage.appendChild(retryButton);
+          }
+        }, 30000); // Wait 30 seconds before showing retry option
+        
+      } else if (error.includes("rate limit") || error.includes("Limit reached for call permission")) {
+        console.log("Error type: Rate limit");
+        callStatusMessage.innerHTML = "⚠️ <strong>Rate Limit:</strong> You've reached the rate limit for calls or permission requests. Please try again in a few minutes.";
+        callStatusMessage.style.color = "#ff9800";
+      } else if (error.includes("permission")) {
+        console.log("Error type: Permission issue");
+        callStatusMessage.innerHTML = "⚠️ <strong>Permission Required:</strong> " + error;
+        callStatusMessage.style.color = "#2196f3";
+      } else {
+        console.log("Error type: Other");
+        callStatusMessage.innerHTML = "❌ <strong>Call Failed:</strong> " + error;
+        callStatusMessage.style.color = "#dc3545";
+      }
+      makeCallBtn.disabled = false;
+      makeCallBtn.textContent = "Make Call";
+      makeCallBtn.style.backgroundColor = "#25D366";
+      callStatusEl.textContent = "";
+      callStatusMessage.textContent = "Call failed: " + error;
+      callStatusMessage.style.color = "#dc3545";
+    });
   </script>
 </body>
 </html>
